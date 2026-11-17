@@ -2,6 +2,8 @@ package com.jitambulishe.app.workers
 
 import android.Manifest
 import android.app.NotificationChannel
+import android.app.PendingIntent
+import android.content.Intent
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -13,7 +15,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.jitambulishe.app.R
+import com.jitambulishe.app.MainActivity
 import com.jitambulishe.app.data.AppDatabase
 import com.jitambulishe.app.data.CallRecord
 import com.jitambulishe.app.util.PhoneNumberUtils
@@ -133,12 +135,28 @@ class CallLogSyncWorker(
             !name.isNullOrBlank() -> "$number · Matched your saved caller list."
             else -> "Caller: $number · Tap Jitambulishe to review."
         }
+        // Give each call its own immutable PendingIntent. The unique data URI
+        // prevents Android from reusing another call's notification destination.
+        val openCallIntent = Intent(applicationContext, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_OPEN_CALL
+            data = android.net.Uri.parse("jitambulishe://call/$id")
+            putExtra(MainActivity.EXTRA_CALL_LOG_ID, id.toLong())
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            applicationContext,
+            id,
+            openCallIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.sym_call_incoming)
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(contentPendingIntent)
             .setAutoCancel(true)
             .build()
         NotificationManagerCompat.from(applicationContext).notify(id, notification)

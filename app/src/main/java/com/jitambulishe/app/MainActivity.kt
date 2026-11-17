@@ -1,6 +1,7 @@
 package com.jitambulishe.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -25,6 +26,7 @@ class MainActivity : ComponentActivity() {
 
     private var hasCallLogPermission by mutableStateOf(false)
     private var hasNotificationPermission by mutableStateOf(true)
+    private var selectedCallId by mutableStateOf<Long?>(null)
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -35,6 +37,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        selectedCallId = intent?.getLongExtra(EXTRA_CALL_LOG_ID, -1L)
+            ?.takeIf { it > 0L }
         refreshPermissions()
         scheduleCallLogSync()
 
@@ -44,10 +48,20 @@ class MainActivity : ComponentActivity() {
                     database = AppDatabase.get(this),
                     hasCallLogPermission = hasCallLogPermission,
                     hasNotificationPermission = hasNotificationPermission,
+                    selectedCallId = selectedCallId,
+                    onClearSelectedCall = { selectedCallId = null },
                     onRequestPermissions = ::requestPermissions
                 )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        selectedCallId = intent.getLongExtra(EXTRA_CALL_LOG_ID, -1L)
+            .takeIf { it > 0L }
+        if (hasCallLogPermission) enqueueImmediateScan()
     }
 
     override fun onResume() {
@@ -87,6 +101,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun enqueueImmediateScan() {
-        WorkManager.getInstance(this).enqueue(OneTimeWorkRequestBuilder<CallLogSyncWorker>().build())
+        WorkManager.getInstance(this)
+            .enqueue(OneTimeWorkRequestBuilder<CallLogSyncWorker>().build())
+    }
+
+    companion object {
+        const val EXTRA_CALL_LOG_ID = "com.jitambulishe.extra.CALL_LOG_ID"
+        const val ACTION_OPEN_CALL = "com.jitambulishe.action.OPEN_CALL"
     }
 }

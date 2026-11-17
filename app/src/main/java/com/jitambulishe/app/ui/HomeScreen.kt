@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -43,6 +44,8 @@ fun HomeScreen(
     database: AppDatabase,
     hasCallLogPermission: Boolean,
     hasNotificationPermission: Boolean,
+    selectedCallId: Long?,
+    onClearSelectedCall: () -> Unit,
     onRequestPermissions: () -> Unit
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -100,6 +103,81 @@ fun HomeScreen(
                             "Notifications are disabled. You can still review calls in this app.",
                             style = MaterialTheme.typography.labelSmall
                         )
+                    }
+                }
+            }
+        }
+
+        if (selectedCallId != null) {
+            val selectedCall = recentCalls.firstOrNull { it.callLogId == selectedCallId }
+            item(key = "selected_call_details") {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Call details",
+                                style = MaterialTheme.typography.titleLarge,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = onClearSelectedCall) { Text("Close") }
+                        }
+                        if (selectedCall == null) {
+                            Text(
+                                "This call is not in the latest imported call list yet. Keep call-log access enabled and reopen Jitambulishe to refresh.",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        } else {
+                            Text(
+                                selectedCall.identifiedName ?: selectedCall.cachedName ?: "Unknown caller",
+                                style = MaterialTheme.typography.headlineSmall
+                            )
+                            Text(selectedCall.number, style = MaterialTheme.typography.bodyLarge)
+                            val typeLabel = when (selectedCall.callType) {
+                                android.provider.CallLog.Calls.INCOMING_TYPE -> "Incoming"
+                                android.provider.CallLog.Calls.OUTGOING_TYPE -> "Outgoing"
+                                android.provider.CallLog.Calls.MISSED_TYPE -> "Missed"
+                                android.provider.CallLog.Calls.REJECTED_TYPE -> "Rejected"
+                                else -> "Call"
+                            }
+                            Text("$typeLabel · ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(selectedCall.callDate))}")
+                            Text("Duration: ${selectedCall.durationSeconds} seconds")
+                            if (selectedCall.isSpam) {
+                                Text("This number is on your local spam list.",
+                                    color = MaterialTheme.colorScheme.error)
+                            }
+                            Text(
+                                "Automatic Truecaller reverse lookup is not connected. The current Truecaller SDK is for consent-based verification of the app user's own profile, not arbitrary caller-number searches.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = {
+                                    val uri = Uri.parse(
+                                        "https://www.truecaller.com/search/ke/${selectedCall.number.removePrefix("+")}"
+                                    )
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                                }) { Text("Open Truecaller") }
+                                OutlinedButton(onClick = {
+                                    scope.launch {
+                                        dao.upsert(
+                                            SpamNumber(
+                                                number = selectedCall.number,
+                                                name = selectedCall.identifiedName ?: selectedCall.cachedName,
+                                                isSpam = true
+                                            )
+                                        )
+                                    }
+                                }) { Text("Mark spam") }
+                            }
+                        }
                     }
                 }
             }

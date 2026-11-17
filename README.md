@@ -1,40 +1,29 @@
-# Jitambulishe — Personal passive caller identification
+# Jitambulishe – Passive Post-call Edition
 
-This build is configured for personal sideloaded use on Android 11+ and is designed to stay out of the phone's live calling path.
+Jitambulishe is a personal, offline-first Android caller companion. It does not act as the dialer or call-screening service. It does not answer, reject, silence, or alter incoming calls.
 
-## What this build does
+## v1.1.1 changes
 
-- Does **not** register a `CallScreeningService`.
-- Does **not** request the default caller-ID / call-screening role.
-- Does **not** answer, reject, silence, or modify incoming calls.
-- Reads completed call records from Android's call log when permission is granted.
-- Runs a WorkManager scan when the app opens and periodically (15-minute minimum interval; Android may defer it).
-- Stores imported call metadata in Room and displays recent calls in the app.
-- Matches call numbers against the local saved-number list.
-- Can post low-importance notifications after a call has been imported.
-- Provides a manual Truecaller web lookup shortcut for each imported call.
+- Completed-call notifications now include an explicit Android `PendingIntent`.
+- Tapping a notification opens the app and selects the matching call record.
+- The app displays call number, caller label, call type, date and duration in an in-app detail panel.
+- Notification intents are unique per call to avoid opening the wrong call when several notifications exist.
+- The app remains passive; no live call controls were added.
 
-## Important Android 16 permission limitation
+## Truecaller integration status
 
-`READ_CALL_LOG` is a restricted Android permission. Requesting it at runtime does not guarantee Android will grant it; availability depends on the installer/device policy and applicable Android restrictions. This is a personal sideload build, not a guarantee that call-log access will be allowed on every Android 16 device.
+The app currently offers a manual Truecaller web lookup. It does not automatically query the Truecaller caller database.
 
-If access is denied, the app remains usable for manual number entry and manual Truecaller lookups, but automatic post-call import will not work. The app does not attempt to bypass Android's permission model.
-
-`POST_NOTIFICATIONS` is separately requested on Android 13+. If it is denied, imported calls can still appear in the app when call-log access is available.
-
-## Truecaller integration
-
-The app does not have access to Truecaller's private caller-identification database through a documented general-purpose reverse-number lookup API. The included shortcut opens Truecaller's public search page; it does not silently query or scrape Truecaller. Automatic database lookup requires an authorized API/partner arrangement.
+Truecaller's publicly documented Android SDK is intended for consent-based verification and retrieval of the app user's own Truecaller profile. It is not a general reverse-phone-number lookup API for arbitrary incoming callers. Automatic in-app reverse lookup requires a separately authorized provider/API and its documented terms. Do not scrape Truecaller's website or embed unofficial endpoints/API keys in the Android client.
 
 ## Build
 
-- Android Studio
-- JDK 17
-- Android SDK 35
-- Gradle wrapper distribution 8.9
+Use GitHub Actions (`.github/workflows/build.yml`) to run `./gradlew assembleDebug` and download the APK artifact.
 
-Open the project in Android Studio, sync Gradle, and build the `debug` APK.
+## Permissions and Android behavior
+
+Call-log reading requires `READ_CALL_LOG` access. Android may restrict this permission depending on install/distribution conditions. Notifications require notification permission on Android 13+. WorkManager periodic jobs are inexact and can be delayed by the operating system.
 
 ## Privacy
 
-Call-log entries and local blocklist records are stored on-device in Room. The app does not upload call history or contact data.
+Call records are stored locally in Room. No call data is sent to a remote server by this release.
