@@ -23,6 +23,16 @@ object PhoneNumberUtils {
         }
     }
 
+    /** Basic validation for Kenyan national numbers and international E.164 inputs. */
+    fun isValidKenyanNumber(raw: String?): Boolean {
+        if (raw.isNullOrBlank()) return false
+        val digits = raw.filter { it.isDigit() }
+        return (digits.length == 10 && digits.startsWith("0")) ||
+            (digits.length == 12 && digits.startsWith("254")) ||
+            (digits.length == 9) ||
+            (raw.trim().startsWith("+") && digits.length in 10..15)
+    }
+
     fun formatForDisplay(raw: String?): String {
         if (raw.isNullOrBlank()) return "Unknown"
         return try {

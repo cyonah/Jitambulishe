@@ -1,7 +1,7 @@
 package com.jitambulishe.app
 
-import android.app.role.RoleManager
-import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -9,71 +9,84 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.jitambulishe.app.data.AppDatabase
 import com.jitambulishe.app.ui.HomeScreen
 import com.jitambulishe.app.ui.theme.JitambulisheTheme
-import com.jitambulishe.app.workers.BlocklistSyncWorker
-import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
+import com.jitambulishe.app.workers.CallLogSyncWorker
 import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
 
-    private val roleLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { /* Result ignored: the system tells us if we became default. */ }
+    private var hasCallLogPermission by mutableStateOf(false)
+    private var hasNotificationPermission by mutableStateOf(true)
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        refreshPermissions()
+        if (hasCallLogPermission) enqueueImmediateScan()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        scheduleSync()
+        refreshPermissions()
+        scheduleCallLogSync()
 
         setContent {
             JitambulisheTheme {
-                val context = this
-                var isDefault by remember { mutableStateOf(isDefaultCallerIdApp()) }
-
                 HomeScreen(
-                    isDefaultCallerIdApp = isDefault,
-                    onRequestDefault = {
-                        requestDefaultCallerIdRole()
-                    },
-                    database = AppDatabase.get(context)
+                    database = AppDatabase.get(this),
+                    hasCallLogPermission = hasCallLogPermission,
+                    hasNotificationPermission = hasNotificationPermission,
+                    onRequestPermissions = ::requestPermissions
                 )
             }
         }
     }
 
-    private fun isDefaultCallerIdApp(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
-        val roleManager = getSystemService(RoleManager::class.java) ?: return false
-        return roleManager.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)
+    override fun onResume() {
+        super.onResume()
+        refreshPermissions()
+        if (hasCallLogPermission) enqueueImmediateScan()
     }
 
-    private fun requestDefaultCallerIdRole() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
-        val roleManager = getSystemService(RoleManager::class.java) ?: return
-        if (!roleManager.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) return
-        if (roleManager.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)) return
-        val intent: Intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING)
-        roleLauncher.launch(intent)
+    private fun refreshPermissions() {
+        hasCallLogPermission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.READ_CALL_LOG
+        ) == PackageManager.PERMISSION_GRANTED
+
+        hasNotificationPermission = Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(
+                this, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun scheduleSync() {
-        val constraints = Constraints.Builder()
-            .setRequiresCharging(true)
-            .build()
-        val request = PeriodicWorkRequestBuilder<BlocklistSyncWorker>(30, TimeUnit.DAYS)
-            .setConstraints(constraints)
+    private fun requestPermissions() {
+        val requested = buildList {
+            add(Manifest.permission.READ_CALL_LOG)
+            if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        permissionLauncher.launch(requested.toTypedArray())
+    }
+
+    private fun scheduleCallLogSync() {
+        val periodic = PeriodicWorkRequestBuilder<CallLogSyncWorker>(15, TimeUnit.MINUTES)
             .build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "blocklist_sync",
-            ExistingPeriodicWorkPolicy.KEEP,
-            request
+            CallLogSyncWorker.UNIQUE_WORK_NAME,
+            ExistingPeriodicWorkPolicy.UPDATE,
+            periodic
         )
+        if (hasCallLogPermission) enqueueImmediateScan()
+    }
+
+    private fun enqueueImmediateScan() {
+        WorkManager.getInstance(this).enqueue(OneTimeWorkRequestBuilder<CallLogSyncWorker>().build())
     }
 }

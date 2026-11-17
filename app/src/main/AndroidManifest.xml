@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Optional: for contact name resolution. Remove if you don't want it. -->
-    <uses-permission android:name="android.permission.READ_CONTACTS" />
-
-    <!-- Required for WorkManager network sync (if you enable API client) -->
+    <!-- Required for passive, post-call identification using Android's call log. -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <!-- Notifications are optional; Android 13+ asks at runtime. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
@@ -25,16 +25,5 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- The call screening service: the heart of the app -->
-        <service
-            android:name=".screening.SpamScreeningService"
-            android:permission="android.permission.BIND_SCREENING_SERVICE"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.telecom.CallScreeningService" />
-            </intent-filter>
-        </service>
-
     </application>
 </manifest>
